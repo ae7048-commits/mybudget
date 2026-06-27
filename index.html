@@ -253,6 +253,35 @@ select.field-input { background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .cat-bar-track { height:5px; background:var(--border-light); border-radius:3px; overflow:hidden; }
 .cat-bar-fill  { height:100%; border-radius:3px; transition:width .5s ease; }
 .cat-amount-label { font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; width:72px; text-align:right; flex-shrink:0; }
+
+/* ── 카테고리 아코디언 ── */
+.cat-accordion { display:flex; flex-direction:column; gap:8px; }
+.cat-acc-item { background:var(--surface); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); overflow:hidden; }
+.cat-acc-header { display:flex; align-items:center; gap:10px; padding:14px 16px; cursor:pointer; user-select:none; transition:background .12s; }
+.cat-acc-header:hover { background:var(--bg); }
+.cat-acc-icon { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+.cat-acc-info { flex:1; min-width:0; }
+.cat-acc-name { font-size:14px; font-weight:600; }
+.cat-acc-bar-row { display:flex; align-items:center; gap:6px; margin-top:4px; }
+.cat-acc-bar-track { flex:1; height:4px; background:var(--border-light); border-radius:2px; overflow:hidden; }
+.cat-acc-bar-fill { height:100%; border-radius:2px; transition:width .5s ease; }
+.cat-acc-pct { font-size:11px; color:var(--text-tertiary); font-weight:500; flex-shrink:0; }
+.cat-acc-right { text-align:right; flex-shrink:0; }
+.cat-acc-amount { font-size:15px; font-weight:700; font-variant-numeric:tabular-nums; }
+.cat-acc-count { font-size:11px; color:var(--text-tertiary); margin-top:2px; }
+.cat-acc-chevron { font-size:13px; color:var(--text-tertiary); transition:transform .25s; flex-shrink:0; }
+.cat-acc-item.open .cat-acc-chevron { transform:rotate(180deg); }
+.cat-acc-body { max-height:0; overflow:hidden; transition:max-height .35s cubic-bezier(.4,0,.2,1); }
+.cat-acc-item.open .cat-acc-body { max-height:600px; }
+.cat-acc-tx-list { border-top:1px solid var(--border-light); }
+.cat-acc-tx { display:flex; align-items:center; gap:10px; padding:11px 16px; position:relative; transition:background .1s; }
+.cat-acc-tx+.cat-acc-tx::before { content:''; position:absolute; top:0; left:16px; right:16px; height:1px; background:var(--border-light); }
+.cat-acc-tx:hover { background:var(--bg); }
+.cat-acc-tx-date { font-size:11px; color:var(--text-tertiary); width:36px; flex-shrink:0; }
+.cat-acc-tx-desc { flex:1; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cat-acc-tx-asset { font-size:11px; color:var(--text-tertiary); flex-shrink:0; }
+.cat-acc-tx-amount { font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; flex-shrink:0; }
+
 .daily-chart-card { background:var(--surface); border-radius:var(--radius-lg); padding:20px; box-shadow:var(--shadow-sm); }
 .daily-canvas-wrap { position:relative; height:140px; }
 .top-list { background:var(--surface); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow-sm); }
@@ -453,6 +482,11 @@ select.field-input { background-image:url("data:image/svg+xml,%3Csvg xmlns='http
       </div>
       <div class="cat-legend" id="catLegend"></div>
     </div>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">카테고리별 상세 내역 <span id="rptAccCount"></span></div>
+    <div class="cat-accordion" id="catAccordion"></div>
   </div>
 
   <div class="report-section">
@@ -1060,6 +1094,55 @@ function renderReport() {
       }).join('')
     : '<div style="text-align:center;color:var(--text-tertiary);padding:20px;font-size:13px">지출 내역이 없어요</div>';
 
+  // ── 카테고리별 아코디언 ─────────────────────────
+  document.getElementById('rptAccCount').textContent = catEntries.length + '개 카테고리';
+
+  // 카테고리별 tx 묶기
+  const catTxMap = {};
+  expTx.forEach(tx => {
+    if (!catTxMap[tx.category]) catTxMap[tx.category] = [];
+    catTxMap[tx.category].push(tx);
+  });
+
+  document.getElementById('catAccordion').innerHTML = catEntries.length
+    ? catEntries.map(([cat, amt], i) => {
+        const pct = expense > 0 ? Math.round(amt / expense * 100) : 0;
+        const col = colors[i % colors.length];
+        const catInfo = getCatInfo('expense', cat);
+        const txList = (catTxMap[cat] || []).sort((a,b) => b.amount - a.amount);
+        const txRows = txList.map(tx => {
+          const asset = assets.find(a => a.id === tx.assetId);
+          const dateLabel = tx.date.slice(5).replace('-', '/');
+          return `<div class="cat-acc-tx">
+            <span class="cat-acc-tx-date">${dateLabel}</span>
+            <span class="cat-acc-tx-desc">${tx.desc}</span>
+            <span class="cat-acc-tx-asset">${asset ? asset.name : ''}</span>
+            <span class="cat-acc-tx-amount">${formatKRW(tx.amount)}</span>
+          </div>`;
+        }).join('');
+        return `<div class="cat-acc-item" id="acc-${i}">
+          <div class="cat-acc-header" onclick="toggleAccordion('acc-${i}')">
+            <div class="cat-acc-icon" style="background:${catInfo.bg};color:${catInfo.text}">${catInfo.icon}</div>
+            <div class="cat-acc-info">
+              <div class="cat-acc-name">${cat}</div>
+              <div class="cat-acc-bar-row">
+                <div class="cat-acc-bar-track"><div class="cat-acc-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+                <span class="cat-acc-pct">${pct}%</span>
+              </div>
+            </div>
+            <div class="cat-acc-right">
+              <div class="cat-acc-amount">${formatKRW(amt)}</div>
+              <div class="cat-acc-count">${txList.length}건</div>
+            </div>
+            <span class="cat-acc-chevron">▼</span>
+          </div>
+          <div class="cat-acc-body">
+            <div class="cat-acc-tx-list">${txRows}</div>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div style="text-align:center;color:var(--text-tertiary);padding:24px;font-size:13px">지출 내역이 없어요</div>';
+
   const daysInMonth=new Date(y,m+1,0).getDate();
   const dailyMap={};
   expTx.forEach(tx=>{ const d=parseInt(tx.date.slice(8,10)); dailyMap[d]=(dailyMap[d]||0)+tx.amount; });
@@ -1092,6 +1175,12 @@ function renderReport() {
         </div>`;
       }).join('')
     : '<div style="text-align:center;color:var(--text-tertiary);padding:24px;font-size:13px">지출 내역이 없어요</div>';
+}
+
+// ── 아코디언 토글 ─────────────────────────────────
+function toggleAccordion(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
 }
 
 // ── Toast ──────────────────────────────────────────
